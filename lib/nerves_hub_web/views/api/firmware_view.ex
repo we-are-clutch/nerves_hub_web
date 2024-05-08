@@ -11,6 +11,10 @@ defmodule NervesHubWeb.API.FirmwareView do
     %{data: render_one(firmware, FirmwareView, "firmware.json")}
   end
 
+  def render("download.json", %{firmware: firmware, url: url}) do
+    %{data: render_one(firmware, FirmwareView, "firmware_download.json")}
+  end
+
   def render("firmware.json", %{firmware: %{product: %Ecto.Association.NotLoaded{}} = firmware}) do
     firmware = NervesHub.Repo.preload(firmware, :product)
     render("firmware.json", %{firmware: firmware})
@@ -24,6 +28,18 @@ defmodule NervesHubWeb.API.FirmwareView do
       platform: firmware.platform,
       version: firmware.version,
       product: firmware.product.name
+    }
+  end
+
+  def render("firmware_download.json", %{firmware: firmware, url: url}) do
+    %{
+      architecture: firmware.architecture,
+      uuid: firmware.uuid,
+      author: firmware.author,
+      platform: firmware.platform,
+      version: firmware.version,
+      product: firmware.product.name,
+      url: url
     }
   end
 end
