@@ -43,4 +43,21 @@ defmodule NervesHubWeb.API.FirmwareController do
       send_resp(conn, :no_content, "")
     end
   end
+
+  def download(%{assigns: %{product: product}} = conn, %{"uuid" => uuid}) do
+    with {:ok, firmware} <- Firmwares.get_firmware_by_product_and_uuid(product, uuid) do
+      if uploader = Application.get_env(:nerves_hub, :firmware_upload) do
+        uploader.download_file(firmware)
+        |> case do
+          {:ok, url} ->
+            render(conn, "download.json", firmware: firmware, url: url)
+
+          error ->
+            error
+        end
+      else
+        {:error}
+      end
+    end
+  end
 end
