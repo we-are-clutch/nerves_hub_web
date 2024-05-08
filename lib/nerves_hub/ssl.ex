@@ -1,7 +1,6 @@
 defmodule NervesHub.SSL do
   alias NervesHub.Devices
   alias NervesHub.Certificate
-  alias NervesHub.RateLimit
 
   @type pkix_path_validation_reason ::
           :cert_expired
@@ -74,39 +73,31 @@ defmodule NervesHub.SSL do
   end
 
   defp do_verify(otp_cert, state) do
-    if RateLimit.increment() do
-      :telemetry.execute([:nerves_hub, :rate_limit, :accepted], %{count: 1})
+    case verify_cert(otp_cert) do
+      {:ok, _db_cert} ->
+        :telemetry.execute([:nerves_hub, :ssl, :success], %{count: 1})
 
-      case verify_cert(otp_cert) do
-        {:ok, _db_cert} ->
-          :telemetry.execute([:nerves_hub, :ssl, :success], %{count: 1})
+        {:valid, state}
 
-          {:valid, state}
+      {:error, {:bad_cert, reason}} ->
+        :telemetry.execute([:nerves_hub, :ssl, :fail], %{count: 1})
 
-        {:error, {:bad_cert, reason}} ->
-          :telemetry.execute([:nerves_hub, :ssl, :fail], %{count: 1})
+        {:fail, reason}
 
-          {:fail, reason}
+      {:error, _} ->
+        :telemetry.execute([:nerves_hub, :ssl, :fail], %{count: 1})
 
-        {:error, _} ->
-          :telemetry.execute([:nerves_hub, :ssl, :fail], %{count: 1})
+        {:fail, :registration_failed}
 
-          {:fail, :registration_failed}
+      reason when is_atom(reason) ->
+        :telemetry.execute([:nerves_hub, :ssl, :fail], %{count: 1})
 
-        reason when is_atom(reason) ->
-          :telemetry.execute([:nerves_hub, :ssl, :fail], %{count: 1})
+        {:fail, reason}
 
-          {:fail, reason}
+      _ ->
+        :telemetry.execute([:nerves_hub, :ssl, :fail], %{count: 1})
 
-        _ ->
-          :telemetry.execute([:nerves_hub, :ssl, :fail], %{count: 1})
-
-          {:fail, :unknown_server_error}
-      end
-    else
-      :telemetry.execute([:nerves_hub, :rate_limit, :rejected], %{count: 1})
-
-      {:fail, :rate_limit}
+        {:fail, :unknown_server_error}
     end
   end
 

@@ -14,8 +14,8 @@ config :nerves_hub,
   deploy_env: System.get_env("DEPLOY_ENV", to_string(config_env())),
   from_email: System.get_env("FROM_EMAIL", "no-reply@nerves-hub.org")
 
-if log_level = System.get_env("LOG_LEVEL") do
-  config :logger, level: String.to_atom(log_level)
+if level = System.get_env("LOG_LEVEL") do
+  config :logger, level: String.to_atom(level)
 end
 
 dns_cluster_query =
@@ -26,22 +26,6 @@ dns_cluster_query =
   end
 
 config :nerves_hub, dns_cluster_query: dns_cluster_query
-
-##
-# Configure distributed erlang ports and nodes to connect to.
-#
-if System.get_env("RELEASE_MODE") do
-  node_list =
-    System.get_env("SYNC_NODES_OPTIONAL")
-    |> String.split(" ", trim: true)
-    |> Enum.map(&String.to_atom/1)
-
-  config :kernel,
-    sync_nodes_optional: node_list,
-    sync_nodes_timeout: 5000,
-    inet_dist_listen_min: 9100,
-    inet_dist_listen_max: 9155
-end
 
 ##
 # Web and Device endpoints
@@ -71,6 +55,9 @@ if config_env() == :prod do
         signing_salt: System.fetch_env!("LIVE_VIEW_SIGNING_SALT")
       ],
       server: true
+
+    config :nerves_hub, NervesHubWeb.DeviceSocketSharedSecretAuth,
+      enabled: System.get_env("DEVICE_SHARED_SECRET_AUTH", "false") == "true"
   end
 
   if nerves_hub_app in ["all", "device"] do
@@ -113,12 +100,24 @@ if config_env() == :prod do
         end
       end
 
+    cacertfile =
+      if cacertfile = System.get_env("DEVICE_SSL_CACERTFILE") do
+        if File.exists?(cacertfile) do
+          cacertfile
+        else
+          raise "Could not find certfile"
+        end
+      else
+        CAStore.file_path()
+      end
+
     config :nerves_hub, NervesHubWeb.DeviceEndpoint,
       url: [host: host],
       https: [
         port: https_port,
         otp_app: :nerves_hub,
         thousand_island_options: [
+          transport_module: NervesHub.DeviceSSLTransport,
           transport_options: [
             # Enable client SSL
             # Older versions of OTP 25 may break using using devices
@@ -136,7 +135,8 @@ if config_env() == :prod do
             fail_if_no_peer_cert: true,
             keyfile: keyfile,
             certfile: certfile,
-            cacertfile: CAStore.file_path()
+            cacertfile: cacertfile,
+            hibernate_after: 15_000
           ]
         ]
       ]
@@ -144,13 +144,13 @@ if config_env() == :prod do
 end
 
 ##
-# Database connection settings
+# Database and Libcluster connection settings
 #
 if config_env() == :prod do
   database_ssl_opts =
     if System.get_env("DATABASE_PEM") do
       db_hostname_charlist =
-        ~r/.*@(?<hostname>.*):\d{4}\/.*/
+        ~r/.*@(?<hostname>[^:\/]+)(?::\d+)?\/.*/
         |> Regex.named_captures(System.fetch_env!("DATABASE_URL"))
         |> Map.get("hostname")
         |> to_charlist()
@@ -170,26 +170,51 @@ if config_env() == :prod do
       [cacerts: :public_key.cacerts_get()]
     end
 
-  databse_socket_options = if System.get_env("DATABASE_INET6") == "true", do: [:inet6], else: []
+  database_socket_options = if System.get_env("DATABASE_INET6") == "true", do: [:inet6], else: []
 
   config :nerves_hub, NervesHub.Repo,
     url: System.fetch_env!("DATABASE_URL"),
     ssl: System.get_env("DATABASE_SSL", "true") == "true",
     ssl_opts: database_ssl_opts,
     pool_size: String.to_integer(System.get_env("DATABASE_POOL_SIZE", "20")),
-    socket_options: databse_socket_options,
+    socket_options: database_socket_options,
     queue_target: 5000
+
+  oban_pool_size =
+    System.get_env("OBAN_DATABASE_POOL_SIZE") || System.get_env("DATABASE_POOL_SIZE", "20")
 
   config :nerves_hub, NervesHub.ObanRepo,
     url: System.fetch_env!("DATABASE_URL"),
     ssl: System.get_env("DATABASE_SSL", "true") == "true",
     ssl_opts: database_ssl_opts,
-    pool_size: String.to_integer(System.get_env("DATABASE_POOL_SIZE", "20")),
-    socket_options: databse_socket_options,
+    pool_size: String.to_integer(oban_pool_size),
+    socket_options: database_socket_options,
     queue_target: 5000
 
   config :nerves_hub,
     database_auto_migrator: System.get_env("DATABASE_AUTO_MIGRATOR", "true") == "true"
+
+  # Libcluster is using Postgres for Node discovery
+  # The library only accepts keyword configs, so the DATABASE_URL has to be
+  # parsed and put together with the ssl pieces from above.
+  postgres_config = Ecto.Repo.Supervisor.parse_url(System.fetch_env!("DATABASE_URL"))
+
+  libcluster_db_config =
+    [port: 5432]
+    |> Keyword.merge(postgres_config)
+    |> Keyword.take([:hostname, :username, :password, :database, :port])
+    |> Keyword.merge(ssl: System.get_env("DATABASE_SSL", "true") == "true")
+    |> Keyword.merge(ssl_opts: database_ssl_opts)
+    |> Keyword.merge(parameters: [])
+    |> Keyword.merge(channel_name: "nerves_hub_clustering")
+
+  config :libcluster,
+    topologies: [
+      postgres: [
+        strategy: LibclusterPostgres.Strategy,
+        config: libcluster_db_config
+      ]
+    ]
 end
 
 ##
@@ -201,6 +226,10 @@ if config_env() == :prod do
   case firmware_upload do
     "S3" ->
       config :nerves_hub, firmware_upload: NervesHub.Firmwares.Upload.S3
+
+      config :nerves_hub, NervesHub.Uploads, backend: NervesHub.Uploads.S3
+
+      config :nerves_hub, NervesHub.Uploads.S3, bucket: System.fetch_env!("S3_BUCKET_NAME")
 
       config :nerves_hub, NervesHub.Firmwares.Upload.S3,
         bucket: System.fetch_env!("S3_BUCKET_NAME")
@@ -264,6 +293,15 @@ if config_env() == :prod do
       password: System.fetch_env!("SMTP_PASSWORD"),
       ssl: System.get_env("SMTP_SSL", "false") == "true",
       tls: :always,
+      tls_options: [
+        verify: :verify_peer,
+        cacerts: :public_key.cacerts_get(),
+        depth: 99,
+        server_name_indication: String.to_charlist(System.get_env("SMTP_SERVER")),
+        customize_hostname_check: [
+          match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
+        ]
+      ],
       retries: 1
   end
 end
@@ -279,11 +317,6 @@ end
 config :nerves_hub, :statsd,
   host: System.get_env("STATSD_HOST", "localhost"),
   port: String.to_integer(System.get_env("STATSD_PORT", "8125"))
-
-config :nerves_hub, :socket_drano,
-  enabled: System.get_env("SOCKET_DRAIN_ENABLED", "false") == "true",
-  percentage: String.to_integer(System.get_env("SOCKET_DRAIN_BATCH_PERCENTAGE", "25")),
-  time: String.to_integer(System.get_env("SOCKET_DRAIN_BATCH_TIME", "100"))
 
 config :nerves_hub, :audit_logs,
   enabled: System.get_env("TRUNATE_AUDIT_LOGS_ENABLED", "false") == "true",

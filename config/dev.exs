@@ -44,6 +44,7 @@ config :nerves_hub, NervesHubWeb.DeviceEndpoint,
     port: 4001,
     otp_app: :nerves_hub,
     thousand_island_options: [
+      transport_module: NervesHub.DeviceSSLTransport,
       transport_options: [
         # Enable client SSL
         # Older versions of OTP 25 may break using using devices
@@ -100,6 +101,8 @@ config :nerves_hub, NervesHub.Uploads.File,
 ##
 # Other
 #
+config :nerves_hub, NervesHubWeb.DeviceSocketSharedSecretAuth, enabled: true
+
 config :nerves_hub, NervesHub.SwooshMailer, adapter: Swoosh.Adapters.Local
 
 config :nerves_hub, NervesHub.RateLimit, limit: 10

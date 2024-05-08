@@ -17,7 +17,6 @@ defmodule NervesHub.MixProject do
         nerves_hub: [
           steps: [:assemble],
           include_executables_for: [:unix],
-          reboot_system_after_config: true,
           applications: [
             nerves_hub: :permanent
           ]
@@ -55,9 +54,6 @@ defmodule NervesHub.MixProject do
       {:bandit, "~> 1.0"},
       {:base62, "~> 1.2"},
       {:bcrypt_elixir, "~> 3.0"},
-      # {:dns_cluster, "~> 0.1.1"},
-      {:dns_cluster,
-       git: "https://github.com/davydog187/dns_cluster.git", branch: "support-multiple-queries"},
       {:castore, "~> 1.0"},
       {:circular_buffer, "~> 0.4.1"},
       {:comeonin, "~> 5.3"},
@@ -67,13 +63,14 @@ defmodule NervesHub.MixProject do
       {:ecto_sql, "~> 3.0"},
       {:ex_aws, "~> 2.0"},
       {:ex_aws_s3, "~> 2.0"},
-      {:finch, "~> 0.16.0"},
+      {:finch, "~> 0.17.0"},
       {:floki, ">= 0.27.0", only: :test},
       {:gen_smtp, "~> 1.0"},
       {:gettext, "~> 0.24.0"},
       {:hackney, "~> 1.16"},
       {:hlclock, "~> 1.0"},
       {:jason, "~> 1.2", override: true},
+      {:libcluster_postgres, "~> 0.1.2"},
       {:logfmt, "~> 3.3"},
       {:mox, "~> 1.0", only: [:test, :dev]},
       {:nimble_csv, "~> 1.1"},
@@ -93,7 +90,6 @@ defmodule NervesHub.MixProject do
       {:scrivener_html, git: "https://github.com/nerves-hub/scrivener_html", branch: "phx-1.5"},
       {:sentry, "~> 10.0"},
       {:slipstream, "~> 1.0", only: [:test, :dev]},
-      {:socket_drano, "~> 0.5.0"},
       {:sweet_xml, "~> 0.6"},
       {:swoosh, "~> 1.12"},
       {:telemetry_metrics, "~> 0.4"},
