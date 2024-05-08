@@ -12,7 +12,7 @@ defmodule NervesHubWeb.API.FirmwareView do
   end
 
   def render("download.json", %{firmware: firmware, url: url}) do
-    %{data: render_one(firmware, FirmwareView, "firmware_download.json")}
+    %{data: render_one(firmware, FirmwareView, "firmware_download.json", %{url: url})}
   end
 
   def render("firmware.json", %{firmware: %{product: %Ecto.Association.NotLoaded{}} = firmware}) do
