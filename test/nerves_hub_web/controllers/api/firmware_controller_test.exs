@@ -76,6 +76,26 @@ defmodule NervesHubWeb.API.FirmwareControllerTest do
     end
   end
 
+  describe "download firmware" do
+    setup [:create_firmware]
+
+    test "downloads chosen firmware", %{conn: conn, org: org, product: product, firmware: firmware} do
+      conn =
+        download(
+          conn,
+          Routes.api_firmware_path(conn, :download, org.name, product.name, firmware.uuid)
+        )
+
+      assert response(conn, 204)
+
+      conn =
+        get(conn, Routes.api_firmware_path(conn, :show, org.name, product.name, firmware.uuid))
+
+      assert response(conn, 404)
+    end
+  end
+
+
   defp create_firmware(%{org: org, product: product}) do
     org_key = Fixtures.org_key_fixture(org)
     firmware = Fixtures.firmware_fixture(org_key, product)
