@@ -63,17 +63,16 @@ defmodule NervesHub.Deployments do
 
   def get_deployment!(deployment_id), do: Repo.get!(Deployment, deployment_id)
 
+  @spec get_by_product_and_name!(Product.t(), String.t()) :: Deployment.t()
+  def get_by_product_and_name!(product, name) do
+    get_by_product_and_name_query(product, name)
+    |> Repo.one!()
+  end
+
   @spec get_deployment_by_name(Product.t(), String.t()) ::
           {:ok, Deployment.t()} | {:error, :not_found}
-  def get_deployment_by_name(%Product{id: product_id}, deployment_name) do
-    from(
-      d in Deployment,
-      where: d.name == ^deployment_name,
-      join: f in assoc(d, :firmware),
-      where: f.product_id == ^product_id
-    )
-    |> Deployment.with_firmware()
-    |> Deployment.with_product()
+  def get_deployment_by_name(product, name) do
+    get_by_product_and_name_query(product, name)
     |> Repo.one()
     |> case do
       nil ->
@@ -84,6 +83,15 @@ defmodule NervesHub.Deployments do
     end
   end
 
+  defp get_by_product_and_name_query(%Product{id: product_id}, name) do
+    Deployment
+    |> where(name: ^name)
+    |> where(product_id: ^product_id)
+    |> join(:left, [d], f in assoc(d, :firmware))
+    |> join(:left, [d], p in assoc(d, :product))
+    |> preload([d, f, p], firmware: f, product: p)
+  end
+
   @spec delete_deployment(Deployment.t()) :: {:ok, Deployment.t()} | {:error, :not_found}
   def delete_deployment(%Deployment{id: deployment_id}) do
     case Repo.delete(Repo.get!(Deployment, deployment_id)) do
@@ -91,7 +99,7 @@ defmodule NervesHub.Deployments do
         {:error, :not_found}
 
       {:ok, deployment} ->
-        broadcast(:monitor, "deployments/delete", %{deployment_id: deployment.id})
+        _ = broadcast(:monitor, "deployments/delete", %{deployment_id: deployment.id})
 
         {:ok, deployment}
     end
@@ -147,7 +155,7 @@ defmodule NervesHub.Deployments do
             # This opens up a minor optimization to preemptively set matching
             # devices to the new deployment all at once since the version
             # condition can be skipped.
-            # 
+            #
             # This also helps with offline devices by potentially reducing the
             # need to do the expensive deployment check on next connect which
             # reduces the load when a lot of devices come online at once.
@@ -169,10 +177,22 @@ defmodule NervesHub.Deployments do
             |> Repo.update_all(set: [deployment_id: deployment.id])
           end
 
-          broadcast(deployment, "deployments/changed", payload)
-          broadcast(:none, "deployments/changed", payload)
+          _ = broadcast(deployment, "deployments/changed", payload)
+          _ = broadcast(:none, "deployments/changed", payload)
 
           description = "deployment #{deployment.name} conditions changed and removed all devices"
+          AuditLogs.audit!(deployment, deployment, description)
+        end
+
+        # Trigger the new archive to get downloaded by devices
+        if Map.has_key?(changeset.changes, :archive_id) do
+          payload = %{
+            archive_id: deployment.archive_id
+          }
+
+          _ = broadcast(deployment, "archives/updated", payload)
+
+          description = "deployment #{deployment.name} has a new archive"
           AuditLogs.audit!(deployment, deployment, description)
         end
 
@@ -186,14 +206,14 @@ defmodule NervesHub.Deployments do
             |> where([d], d.deployment_id == ^deployment.id)
             |> Repo.update_all(set: [deployment_id: nil])
 
-            broadcast(deployment, "deployments/changed", payload)
+            _ = broadcast(deployment, "deployments/changed", payload)
 
             description = "deployment #{deployment.name} is inactive and removed all devices"
             AuditLogs.audit!(deployment, deployment, description)
           end
         end
 
-        broadcast(deployment, "deployments/update")
+        _ = broadcast(deployment, "deployments/update")
 
         {:ok, deployment}
 
@@ -208,7 +228,7 @@ defmodule NervesHub.Deployments do
 
     case Repo.insert(changeset) do
       {:ok, deployment} ->
-        broadcast(:monitor, "deployments/new", %{deployment_id: deployment.id})
+        _ = broadcast(:monitor, "deployments/new", %{deployment_id: deployment.id})
 
         {:ok, deployment}
 

@@ -2,12 +2,29 @@ defmodule NervesHub.Tracker do
   @doc """
   Tell internal listeners that the device is online, via a connection change
   """
+
+  alias NervesHub.Devices.Device
+
   def online(%{} = device) do
     online(device.identifier)
   end
 
   def online(identifier) when is_binary(identifier) do
     publish(identifier, "online")
+  end
+
+  def confirm_online(%Device{identifier: identifier}) do
+    message = %Phoenix.Socket.Broadcast{
+      event: "connection:status",
+      payload: %{
+        device_id: identifier,
+        status: "online"
+      }
+    }
+
+    _ = Phoenix.PubSub.broadcast(NervesHub.PubSub, "device:#{identifier}:internal", message)
+
+    :ok
   end
 
   @doc """
@@ -23,14 +40,14 @@ defmodule NervesHub.Tracker do
 
   defp publish(identifier, status) do
     message = %Phoenix.Socket.Broadcast{
-      event: "connection_change",
+      event: "connection:change",
       payload: %{
         device_id: identifier,
         status: status
       }
     }
 
-    Phoenix.PubSub.broadcast(NervesHub.PubSub, "device:#{identifier}:internal", message)
+    _ = Phoenix.PubSub.broadcast(NervesHub.PubSub, "device:#{identifier}:internal", message)
 
     :ok
   end
@@ -53,8 +70,8 @@ defmodule NervesHub.Tracker do
   online. If the device is online, it will send a connection state change of online.
   """
   def online?(device) do
-    Phoenix.PubSub.broadcast(NervesHub.PubSub, "device:#{device.id}", :online?)
-    false
+    _ = Phoenix.PubSub.broadcast(NervesHub.PubSub, "device:#{device.id}", :online?)
+    device.connection_status == :connected
   end
 
   @doc """
@@ -63,7 +80,7 @@ defmodule NervesHub.Tracker do
   If the device is not online this function will wait for a timeout before returning false
   """
   def sync_online?(device) do
-    Phoenix.PubSub.broadcast(NervesHub.PubSub, "device:#{device.id}", {:online?, self()})
+    _ = Phoenix.PubSub.broadcast(NervesHub.PubSub, "device:#{device.id}", {:online?, self()})
 
     receive do
       :online ->

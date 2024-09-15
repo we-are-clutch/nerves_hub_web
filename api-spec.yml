@@ -1,7 +1,7 @@
-openapi: '3.0.2'
+openapi: "3.0.2"
 info:
   title: NervesHub Web
-  version: '2.0'
+  version: "2.0"
 servers:
   - url: http://localhost:4000/api
 security:
@@ -31,13 +31,25 @@ components:
     device:
       type: object
       properties:
+        connection_status:
+          type: string
+          example: "connected"
+        connection_established_at:
+          type: string
+          format: date-time
+        connection_disconnected_at:
+          type: string
+          format: date-time
+        connection_last_seen_at:
+          type: string
+          format: date-time
         deployment:
-          $ref: '#/components/schemas/deployment'
+          $ref: "#/components/schemas/deployment"
         description:
           type: string
           example: "A device"
         firmware_metadata:
-          $ref: '#/components/schemas/firmware_metadata'
+          $ref: "#/components/schemas/firmware_metadata"
         firmware_update_status:
           type: string
           enum: [latest, pending, updating]
@@ -136,6 +148,18 @@ components:
       description: |
         Metadata of the active firmware.
       nullable: true
+    script:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "MOTD"
+        text:
+          type: string
+          example: "NervesMOTD.print()"
 paths:
   /devices/{id}:
     get:
@@ -150,7 +174,7 @@ paths:
             format: uuid
           required: true
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
@@ -164,13 +188,82 @@ paths:
                   `deployment` contains information about what firmware version and UUID should eventually be running on the device.
                 properties:
                   data:
-                    $ref: '#/components/schemas/device'
-        '404':
+                    $ref: "#/components/schemas/device"
+        "404":
           description: Not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/error"
+  /devices/{identifier}/move:
+    post:
+      summary: Move a device to another product, in the same or different organization
+      parameters:
+        - in: query
+          name: identifier
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                org_name:
+                  type: string
+                  example: "nerveshub"
+                product_name:
+                  type: string
+                  example: "kiosk"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/device"
+  /devices/{identifier}/scripts:
+    get:
+      summary: List all scripts for a device
+      parameters:
+        - in: query
+          name: identifier
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/script"
+  /devices/{identifier}/scripts/{id}:
+    post:
+      summary: Trigger a script to run
+      parameters:
+        - in: query
+          name: identifier
+          schema:
+            type: string
+        - in: query
+          name: id
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: |
+                  iex(1)> IO.inspect("Hello there")
+                  "Hello there"
   /orgs/{org}/keys:
     get:
       summary: List all firmware signing keys for the organization
@@ -181,7 +274,7 @@ paths:
             type: string
             example: nerveshub
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
@@ -212,9 +305,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/firmware_key'
+              $ref: "#/components/schemas/firmware_key"
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:
@@ -222,12 +315,12 @@ paths:
                 type: object
                 properties:
                   data:
-                    $ref: '#/components/schemas/firmware_key'
+                    $ref: "#/components/schemas/firmware_key"
   /users/me:
     get:
       summary: View information about the authenticated user
       responses:
-        '200':
+        "200":
           description: OK
           content:
             application/json:

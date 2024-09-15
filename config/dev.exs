@@ -25,9 +25,9 @@ config :nerves_hub, NervesHubWeb.Endpoint,
     patterns: [
       ~r{priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$},
       ~r{priv/gettext/.*(po)$},
-      ~r{lib/nerves_hub_www_web/views/.*(ex)$},
-      ~r{lib/nerves_hub_www_web/templates/.*(eex|md)$},
-      ~r{lib/nerves_hube_www_web/live/.*(ex)$}
+      ~r{lib/nerves_hub_web/views/.*(ex)$},
+      ~r{lib/nerves_hub_web/templates/.*(eex|md)$},
+      ~r{lib/nerves_hub_web/live/.*(ex)$}
     ]
   ]
 
@@ -101,10 +101,16 @@ config :nerves_hub, NervesHub.Uploads.File,
 ##
 # Other
 #
-config :nerves_hub, NervesHubWeb.DeviceSocketSharedSecretAuth, enabled: true
+config :nerves_hub, NervesHubWeb.DeviceSocket,
+  shared_secrets: [
+    enabled: true
+  ]
 
 config :nerves_hub, NervesHub.SwooshMailer, adapter: Swoosh.Adapters.Local
 
 config :nerves_hub, NervesHub.RateLimit, limit: 10
 
 config :sentry, environment_name: :development
+
+config :nerves_hub,
+  open_for_registrations: true

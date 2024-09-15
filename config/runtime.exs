@@ -12,20 +12,39 @@ end
 config :nerves_hub,
   app: nerves_hub_app,
   deploy_env: System.get_env("DEPLOY_ENV", to_string(config_env())),
-  from_email: System.get_env("FROM_EMAIL", "no-reply@nerves-hub.org")
+  web_title_suffix: System.get_env("WEB_TITLE_SUFFIX", "NervesHub"),
+  from_email: System.get_env("FROM_EMAIL", "no-reply@nerves-hub.org"),
+  email_sender: System.get_env("EMAIL_SENDER", "NervesHub"),
+  support_email_platform_name: System.get_env("SUPPORT_EMAIL_PLATFORM_NAME", "NervesHub"),
+  support_email_address: System.get_env("SUPPORT_EMAIL_ADDRESS"),
+  support_email_signoff: System.get_env("SUPPORT_EMAIL_SIGNOFF"),
+  device_endpoint_redirect:
+    System.get_env("DEVICE_ENDPOINT_REDIRECT", "https://docs.nerves-hub.org/"),
+  admin_auth: [
+    username: System.get_env("ADMIN_AUTH_USERNAME"),
+    password: System.get_env("ADMIN_AUTH_PASSWORD")
+  ],
+  device_health_check_enabled: System.get_env("DEVICE_HEALTH_CHECK_ENABLED", "true") == "true",
+  device_health_check_interval_minutes:
+    String.to_integer(System.get_env("DEVICE_HEALTH_CHECK_INTERVAL_MINUTES", "60")),
+  device_health_days_to_retain:
+    String.to_integer(System.get_env("HEALTH_CHECK_DAYS_TO_RETAIN", "7")),
+  device_deployment_change_jitter_seconds:
+    String.to_integer(System.get_env("DEVICE_DEPLOYMENT_CHANGE_JITTER_SECONDS", "10")),
+  device_last_seen_update_interval_minutes:
+    String.to_integer(System.get_env("DEVICE_LAST_SEEN_UPDATE_INTERVAL_MINUTES", "5")),
+  mapbox_access_token: System.get_env("MAPBOX_ACCESS_TOKEN"),
+  dashboard_enabled: System.get_env("DASHBOARD_ENABLED", "false") == "true"
+
+# only set this in :prod as not to override the :dev config
+if config_env() == :prod do
+  config :nerves_hub,
+    open_for_registrations: System.get_env("OPEN_FOR_REGISTRATIONS", "false") == "true"
+end
 
 if level = System.get_env("LOG_LEVEL") do
   config :logger, level: String.to_atom(level)
 end
-
-dns_cluster_query =
-  if System.get_env("DNS_CLUSTER_QUERY") do
-    System.get_env("DNS_CLUSTER_QUERY") |> String.split(",")
-  else
-    nil
-  end
-
-config :nerves_hub, dns_cluster_query: dns_cluster_query
 
 ##
 # Web and Device endpoints
@@ -55,9 +74,6 @@ if config_env() == :prod do
         signing_salt: System.fetch_env!("LIVE_VIEW_SIGNING_SALT")
       ],
       server: true
-
-    config :nerves_hub, NervesHubWeb.DeviceSocketSharedSecretAuth,
-      enabled: System.get_env("DEVICE_SHARED_SECRET_AUTH", "false") == "true"
   end
 
   if nerves_hub_app in ["all", "device"] do
@@ -73,7 +89,8 @@ if config_env() == :prod do
     keyfile =
       if System.get_env("DEVICE_SSL_KEY") do
         ssl_key = System.fetch_env!("DEVICE_SSL_KEY") |> Base.decode64!()
-        :ok = File.write("/app/tmp/ssl_key.crt", ssl_key)
+        File.mkdir_p!("/app/tmp")
+        File.write!("/app/tmp/ssl_key.crt", ssl_key)
         "/app/tmp/ssl_key.crt"
       else
         ssl_keyfile = System.get_env("DEVICE_SSL_KEYFILE", "/etc/ssl/#{host}-key.pem")
@@ -88,7 +105,8 @@ if config_env() == :prod do
     certfile =
       if encoded_cert = System.get_env("DEVICE_SSL_CERT") do
         ssl_cert = Base.decode64!(encoded_cert)
-        :ok = File.write("/app/tmp/ssl_cert.crt", ssl_cert)
+        File.mkdir_p!("/app/tmp")
+        File.write!("/app/tmp/ssl_cert.crt", ssl_cert)
         "/app/tmp/ssl_cert.crt"
       else
         ssl_certfile = System.get_env("DEVICE_SSL_CERTFILE", "/etc/ssl/#{host}.pem")
@@ -111,36 +129,49 @@ if config_env() == :prod do
         CAStore.file_path()
       end
 
+    transport_options = [
+      verify: :verify_peer,
+      verify_fun: {&NervesHub.SSL.verify_fun/3, nil},
+      fail_if_no_peer_cert: false,
+      keyfile: keyfile,
+      certfile: certfile,
+      cacertfile: cacertfile,
+      hibernate_after: 15_000
+    ]
+
+    # Older versions of OTP 25 may break using using devices
+    # that support TLS 1.3 or 1.2 negotiation. To mitigate that
+    # potential error, by default we enforce TLS 1.2.
+    # If you're using OTP >= 25.1 on all devices, then it is safe to
+    # allow TLS 1.3 and setting `certificate_authorities: false` since we
+    # don't expect devices to send full chains to the server
+    # See https://github.com/erlang/otp/issues/6492#issuecomment-1323874205
+    transport_options =
+      if System.get_env("DEVICE_ENABLE_TLS_13", "false") == "true" do
+        transport_options ++ [certificate_authorities: false]
+      else
+        transport_options ++ [versions: [:"tlsv1.2"]]
+      end
+
     config :nerves_hub, NervesHubWeb.DeviceEndpoint,
       url: [host: host],
       https: [
         port: https_port,
         otp_app: :nerves_hub,
+        http_options: [
+          log_protocol_errors: false
+        ],
         thousand_island_options: [
           transport_module: NervesHub.DeviceSSLTransport,
-          transport_options: [
-            # Enable client SSL
-            # Older versions of OTP 25 may break using using devices
-            # that support TLS 1.3 or 1.2 negotiation. To mitigate that
-            # potential error, we enforce TLS 1.2. If you're using OTP >= 25.1
-            # on all devices, then it is safe to allow TLS 1.3 by removing
-            # the versions constraint and setting `certificate_authorities: false`
-            # since we don't expect devices to send full chains to the server
-            # See https://github.com/erlang/otp/issues/6492#issuecomment-1323874205
-            #
-            # certificate_authorities: false,
-            versions: [:"tlsv1.2"],
-            verify: :verify_peer,
-            verify_fun: {&NervesHub.SSL.verify_fun/3, nil},
-            fail_if_no_peer_cert: true,
-            keyfile: keyfile,
-            certfile: certfile,
-            cacertfile: cacertfile,
-            hibernate_after: 15_000
-          ]
+          transport_options: transport_options
         ]
       ]
   end
+
+  config :nerves_hub, NervesHubWeb.DeviceSocket,
+    shared_secrets: [
+      enabled: System.get_env("DEVICE_SHARED_SECRETS_ENABLED", "false") == "true"
+    ]
 end
 
 ##
@@ -148,34 +179,37 @@ end
 #
 if config_env() == :prod do
   database_ssl_opts =
-    if System.get_env("DATABASE_PEM") do
-      db_hostname_charlist =
-        ~r/.*@(?<hostname>[^:\/]+)(?::\d+)?\/.*/
-        |> Regex.named_captures(System.fetch_env!("DATABASE_URL"))
-        |> Map.get("hostname")
-        |> to_charlist()
+    if System.get_env("DATABASE_SSL", "true") == "true" do
+      if System.get_env("DATABASE_PEM") do
+        db_hostname_charlist =
+          ~r/.*@(?<hostname>[^:\/]+)(?::\d+)?\/.*/
+          |> Regex.named_captures(System.fetch_env!("DATABASE_URL"))
+          |> Map.get("hostname")
+          |> to_charlist()
 
-      cacerts =
-        System.fetch_env!("DATABASE_PEM")
-        |> Base.decode64!()
-        |> :public_key.pem_decode()
-        |> Enum.map(fn {_, der, _} -> der end)
+        cacerts =
+          System.fetch_env!("DATABASE_PEM")
+          |> Base.decode64!()
+          |> :public_key.pem_decode()
+          |> Enum.map(fn {_, der, _} -> der end)
 
-      [
-        verify: :verify_peer,
-        cacerts: cacerts,
-        server_name_indication: db_hostname_charlist
-      ]
+        [
+          verify: :verify_peer,
+          cacerts: cacerts,
+          server_name_indication: db_hostname_charlist
+        ]
+      else
+        [cacerts: :public_key.cacerts_get()]
+      end
     else
-      [cacerts: :public_key.cacerts_get()]
+      false
     end
 
   database_socket_options = if System.get_env("DATABASE_INET6") == "true", do: [:inet6], else: []
 
   config :nerves_hub, NervesHub.Repo,
     url: System.fetch_env!("DATABASE_URL"),
-    ssl: System.get_env("DATABASE_SSL", "true") == "true",
-    ssl_opts: database_ssl_opts,
+    ssl: database_ssl_opts,
     pool_size: String.to_integer(System.get_env("DATABASE_POOL_SIZE", "20")),
     socket_options: database_socket_options,
     queue_target: 5000
@@ -185,8 +219,7 @@ if config_env() == :prod do
 
   config :nerves_hub, NervesHub.ObanRepo,
     url: System.fetch_env!("DATABASE_URL"),
-    ssl: System.get_env("DATABASE_SSL", "true") == "true",
-    ssl_opts: database_ssl_opts,
+    ssl: database_ssl_opts,
     pool_size: String.to_integer(oban_pool_size),
     socket_options: database_socket_options,
     queue_target: 5000
@@ -203,8 +236,7 @@ if config_env() == :prod do
     [port: 5432]
     |> Keyword.merge(postgres_config)
     |> Keyword.take([:hostname, :username, :password, :database, :port])
-    |> Keyword.merge(ssl: System.get_env("DATABASE_SSL", "true") == "true")
-    |> Keyword.merge(ssl_opts: database_ssl_opts)
+    |> Keyword.merge(ssl: database_ssl_opts)
     |> Keyword.merge(parameters: [])
     |> Keyword.merge(channel_name: "nerves_hub_clustering")
 
@@ -238,6 +270,16 @@ if config_env() == :prod do
         config :ex_aws, :s3,
           access_key_id: System.fetch_env!("S3_ACCESS_KEY_ID"),
           secret_access_key: System.fetch_env!("S3_SECRET_ACCESS_KEY")
+      end
+
+      if System.get_env("S3_BUCKET_AS_HOST", "false") == "true" do
+        config :nerves_hub, NervesHub.Firmwares.Upload.S3,
+          presigned_url_opts: [
+            virtual_host: true,
+            bucket_as_host: true
+          ]
+      else
+        config :nerves_hub, NervesHub.Firmwares.Upload.S3, presigned_url_opts: []
       end
 
       config :ex_aws, :s3, bucket: System.fetch_env!("S3_BUCKET_NAME")
@@ -288,9 +330,10 @@ if config_env() == :prod do
     config :nerves_hub, NervesHub.SwooshMailer,
       adapter: Swoosh.Adapters.SMTP,
       relay: System.fetch_env!("SMTP_SERVER"),
-      port: System.fetch_env!("SMTP_PORT"),
+      port: System.fetch_env!("SMTP_PORT") |> String.to_integer(),
       username: System.fetch_env!("SMTP_USERNAME"),
       password: System.fetch_env!("SMTP_PASSWORD"),
+      auth: :always,
       ssl: System.get_env("SMTP_SSL", "false") == "true",
       tls: :always,
       tls_options: [
@@ -311,7 +354,8 @@ if System.get_env("SENTRY_DSN_URL") do
     dsn: System.get_env("SENTRY_DSN_URL"),
     environment_name: System.get_env("DEPLOY_ENV", to_string(config_env())),
     enable_source_code_context: true,
-    root_source_code_path: File.cwd!()
+    root_source_code_path: [File.cwd!()],
+    before_send: {NervesHubWeb.SentryEventFilter, :filter_non_500}
 end
 
 config :nerves_hub, :statsd,
@@ -320,15 +364,11 @@ config :nerves_hub, :statsd,
 
 config :nerves_hub, :audit_logs,
   enabled: System.get_env("TRUNATE_AUDIT_LOGS_ENABLED", "false") == "true",
-  max_records_per_run:
-    String.to_integer(System.get_env("TRUNCATE_AUDIT_LOGS_MAX_RECORDS_PER_RUN", "10000")),
-  days_kept: String.to_integer(System.get_env("TRUNCATE_AUDIT_LOGS_MAX_DAYS_KEPT", "30"))
+  default_days_kept:
+    String.to_integer(System.get_env("TRUNCATE_AUDIT_LOGS_DEFAULT_DAYS_KEPT", "30"))
 
 config :nerves_hub, NervesHub.RateLimit,
   limit: System.get_env("DEVICE_CONNECT_RATE_LIMIT", "100") |> String.to_integer()
 
 config :nerves_hub, NervesHub.NodeReporter,
   enabled: System.get_env("NODE_REPORTER", "false") == "true"
-
-config :nerves_hub, NervesHub.LoadBalancer,
-  enabled: System.get_env("LOAD_BALANCER", "false") == "true"

@@ -18,8 +18,9 @@ defmodule NervesHubWeb.API.ProductControllerTest do
 
   describe "index roles" do
     test "error: missing org read", %{conn2: conn, org: org} do
-      conn = get(conn, Routes.api_product_path(conn, :index, org.name))
-      assert json_response(conn, 403)["status"] != ""
+      assert_raise(Ecto.NoResultsError, fn ->
+        get(conn, Routes.api_product_path(conn, :index, org.name))
+      end)
     end
   end
 
@@ -73,24 +74,9 @@ defmodule NervesHubWeb.API.ProductControllerTest do
       conn = delete(conn, Routes.api_product_path(conn, :delete, org.name, product.name))
       assert response(conn, 204)
 
-      conn = get(conn, Routes.api_product_path(conn, :show, org.name, product.name))
-
-      assert response(conn, 403)
-    end
-
-    test "product delete with associated firmwares", %{
-      conn: conn,
-      org: org,
-      product: product
-    } do
-      # Create firmware for product
-      org_key = Fixtures.org_key_fixture(org)
-      firmware = Fixtures.firmware_fixture(org_key, product)
-      Fixtures.device_fixture(org, product, firmware)
-
-      conn = delete(conn, Routes.api_product_path(conn, :delete, org.name, product.name))
-
-      assert response(conn, 409)
+      assert_raise(Ecto.NoResultsError, fn ->
+        get(conn, Routes.api_product_path(conn, :show, org.name, product.name))
+      end)
     end
   end
 
@@ -103,9 +89,9 @@ defmodule NervesHubWeb.API.ProductControllerTest do
       conn = delete(conn, Routes.api_product_path(conn, :delete, org.name, product.name))
       assert response(conn, 204)
 
-      conn = get(conn, Routes.api_product_path(conn, :show, org.name, product.name))
-
-      assert response(conn, 403)
+      assert_raise(Ecto.NoResultsError, fn ->
+        get(conn, Routes.api_product_path(conn, :show, org.name, product.name))
+      end)
     end
 
     test "error: org delete", %{user2: user, conn2: conn, org: org, product: product} do
@@ -120,23 +106,6 @@ defmodule NervesHubWeb.API.ProductControllerTest do
 
       conn = delete(conn, Routes.api_product_path(conn, :delete, org.name, product.name))
       assert json_response(conn, 403)["status"] != ""
-    end
-  end
-
-  describe "update product" do
-    setup [:create_product]
-
-    test "renders deployment when data is valid", %{conn: conn, org: org, product: product} do
-      conn =
-        put(conn, Routes.api_product_path(conn, :update, org.name, product.name),
-          product: %{"name" => "new"}
-        )
-
-      assert %{"name" => "new"} = json_response(conn, 200)["data"]
-
-      path = Routes.api_product_path(conn, :show, org.name, "new")
-      conn = get(conn, path)
-      assert json_response(conn, 200)["data"]["name"] == "new"
     end
   end
 

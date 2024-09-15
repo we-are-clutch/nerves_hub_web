@@ -21,6 +21,10 @@ defmodule NervesHub.MixProject do
             nerves_hub: :permanent
           ]
         ]
+      ],
+      dialyzer: [
+        flags: [:missing_return, :extra_return, :unmatched_returns, :error_handling, :underspecs],
+        plt_add_apps: [:ex_unit, :mix]
       ]
     ]
   end
@@ -36,8 +40,11 @@ defmodule NervesHub.MixProject do
         :inets,
         :jason,
         :logger,
+        :os_mon,
         :runtime_tools,
-        :timex
+        :timex,
+        :crypto,
+        :public_key
       ]
     ]
   end
@@ -54,16 +61,20 @@ defmodule NervesHub.MixProject do
       {:bandit, "~> 1.0"},
       {:base62, "~> 1.2"},
       {:bcrypt_elixir, "~> 3.0"},
+      {:cachex, "~> 3.6"},
       {:castore, "~> 1.0"},
       {:circular_buffer, "~> 0.4.1"},
       {:comeonin, "~> 5.3"},
+      {:contex, "~> 0.5.0"},
       {:crontab, "~> 1.1"},
       {:decorator, "~> 1.2"},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:ecto, "~> 3.8", override: true},
+      {:ecto_psql_extras, "~> 0.7"},
       {:ecto_sql, "~> 3.0"},
       {:ex_aws, "~> 2.0"},
       {:ex_aws_s3, "~> 2.0"},
-      {:finch, "~> 0.17.0"},
+      {:finch, "~> 0.18.0"},
       {:floki, ">= 0.27.0", only: :test},
       {:gen_smtp, "~> 1.0"},
       {:gettext, "~> 0.24.0"},
@@ -78,12 +89,13 @@ defmodule NervesHub.MixProject do
       {:phoenix, "~> 1.7.0"},
       {:phoenix_ecto, "~> 4.0"},
       {:phoenix_html, "~> 3.3.1", override: true},
+      {:phoenix_live_dashboard, "~> 0.8"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_live_view, "~> 0.20.1"},
-      {:phoenix_markdown, "~> 1.0"},
       {:phoenix_pubsub, "~> 2.0"},
       {:phoenix_swoosh, "~> 1.0"},
       {:phoenix_view, "~> 2.0"},
+      {:phoenix_test, "~> 0.3.0", only: :test, runtime: false},
       {:plug, "~> 1.7"},
       {:postgrex, "~> 0.14"},
       {:scrivener_ecto, "~> 2.7"},

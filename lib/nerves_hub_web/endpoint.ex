@@ -2,6 +2,8 @@ defmodule NervesHubWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :nerves_hub
   use Sentry.PlugCapture
 
+  alias NervesHub.Helpers.WebsocketConnectionError
+
   @session_options [
     store: :cookie,
     key: "_nerves_hub_key",
@@ -14,8 +16,16 @@ defmodule NervesHubWeb.Endpoint do
     websocket: [connect_info: [session: @session_options]]
   )
 
-  socket("/device-socket", NervesHubWeb.DeviceSocketSharedSecretAuth,
-    websocket: [connect_info: [:x_headers]]
+  socket(
+    "/device-socket",
+    NervesHubWeb.DeviceSocket,
+    websocket: [
+      connect_info: [:peer_data, :x_headers],
+      compress: true,
+      timeout: 180_000,
+      fullsweep_after: 0,
+      error_handler: {WebsocketConnectionError, :handle_error, []}
+    ]
   )
 
   # Serve at "/" the static files from "priv/static" directory.
@@ -27,7 +37,7 @@ defmodule NervesHubWeb.Endpoint do
     at: "/",
     from: :nerves_hub,
     gzip: false,
-    only: ~w(css fonts images js favicon.ico robots.txt)
+    only: ~w(css fonts images js favicon.ico robots.txt geo)
   )
 
   plug(NervesHubWeb.Plugs.ConfigureUploads)
@@ -45,9 +55,16 @@ defmodule NervesHubWeb.Endpoint do
     plug(Phoenix.CodeReloader)
   end
 
+  plug(Phoenix.LiveDashboard.RequestLogger,
+    param_key: "request_logger",
+    cookie_key: "request_logger"
+  )
+
   plug(Plug.RequestId)
   plug(Plug.Telemetry, event_prefix: [:phoenix, :endpoint])
   plug(NervesHubWeb.Plugs.Logger)
+
+  plug(NervesHubWeb.Plugs.ImAlive)
 
   plug(
     Plug.Parsers,

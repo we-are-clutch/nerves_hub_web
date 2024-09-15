@@ -11,19 +11,14 @@ This is the 2.0 development branch of NervesHub. If you have been using
 NervesHub prior to around April, 2023 and are not following 2.0 development, see
 the [`maint-v1.0`
 branch](https://github.com/nerves-hub/nerves_hub_web/tree/maint-v1.0). The
-`maint-v1.0` branch is being used in production. 2.0 development is in progress,
-and we don't have guides or good documentation yet. If you use the 2.0
-development branch, we don't expect breaking changes, but please bear with us as
-we complete the 2.0 release.
+`maint-v1.0` branch is being used in production. 2.x development is actively in progress and while guides and documentation are still thin the 2.x code is managing a lot of devices in production right now and can be relied upon. If you use the 2.0
+development branch, we don't expect breaking changes but we are also going to be tagging numbered releases.
 
 ## Project overview and setup
 
 ### Development environment setup
 
-For best compatibility with Erlang SSL versions, we use Erlang/OTP 23.0.4. If
-you're coming to NervesHub without OTP 23 or earlier devices, don't worry about
-this. OTP 23.0.4 is difficult to install on Apple M1/M2 hardware so developing
-on Linux is highly recommended if you're keeping to the OTP 23.0.4 requirement.
+For best compatibility with Erlang SSL versions, we use Erlang/OTP 27.0.1.
 
 The `.tool-versions` files contains the Erlang, Elixir and NodeJS versions.
 Install [asdf-vm](https://asdf-vm.com/) and run the following for quick setup:
@@ -82,8 +77,8 @@ echo "127.0.0.1 nerves-hub.org" | sudo tee -a /etc/hosts
 
 Once the server is running, by default in development you can access it at http://localhost:4000
 
-In development you can login into a pre-generated account with the username
-`nerveshub` and password `nerveshub`.
+In development you can login into a pre-generated account with the email
+`nerveshub@nerves-hub.org` and password `nerveshub`.
 
 ### Running Tests
 
