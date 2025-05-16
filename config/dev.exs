@@ -5,6 +5,20 @@ ssl_dir =
   |> Path.expand()
 
 config :logger, :console, format: "[$level] $message\n"
+config :logger, :default_handler,
+  level: :debug,
+  config: [
+    file: ~c"nerves_hub_web.log",
+    filesync_repeat_interval: 5000,
+    file_check: 5000,
+    max_no_bytes: 10_000_000,
+    max_no_files: 5,
+    compress_on_rotate: true
+  ]
+
+config :logger, :default_formatter,
+  format: "\n$time $metadata[$level] $message\n"
+
 config :phoenix, :stacktrace_depth, 20
 
 ##
@@ -66,9 +80,9 @@ config :nerves_hub, NervesHubWeb.DeviceEndpoint,
         verify: :verify_peer,
         verify_fun: {&NervesHub.SSL.verify_fun/3, nil},
         fail_if_no_peer_cert: false,
-        keyfile: Path.join(ssl_dir, "device.nerves-hub.org-key.pem"),
-        certfile: Path.join(ssl_dir, "device.nerves-hub.org.pem"),
-        cacertfile: Path.join(ssl_dir, "ca.pem")
+        keyfile: Path.join(ssl_dir, "private.key"),
+        certfile: Path.join(ssl_dir, "certificate.crt"),
+        cacertfile: Path.join(ssl_dir, "ca_bundle.crt")
       ]
     ]
   ]
@@ -79,13 +93,13 @@ config :nerves_hub, NervesHubWeb.DeviceEndpoint,
 config :nerves_hub, NervesHub.Repo,
   url: System.get_env("DATABASE_URL", "postgres://postgres:postgres@localhost/nerves_hub_dev"),
   show_sensitive_data_on_connection_error: true,
-  pool_size: 10,
+  pool_size: 5,
   ssl: false
 
 config :nerves_hub, NervesHub.ObanRepo,
   url: System.get_env("DATABASE_URL", "postgres://postgres:postgres@localhost/nerves_hub_dev"),
   show_sensitive_data_on_connection_error: true,
-  pool_size: 10,
+  pool_size: 5,
   ssl: false
 
 ##

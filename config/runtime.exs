@@ -248,7 +248,9 @@ if config_env() == :prod do
     pool_size: String.to_integer(System.get_env("DATABASE_POOL_SIZE", "20")),
     pool_count: String.to_integer(System.get_env("DATABASE_POOL_COUNT", "1")),
     socket_options: database_socket_options,
-    queue_target: 5000
+    queue_target: 5000,
+    timeout: 60_000,
+    pool_timeout: 60_000
 
   oban_pool_size =
     System.get_env("OBAN_DATABASE_POOL_SIZE") || System.get_env("DATABASE_POOL_SIZE", "20")
@@ -258,7 +260,9 @@ if config_env() == :prod do
     ssl: database_ssl_opts,
     pool_size: String.to_integer(oban_pool_size),
     socket_options: database_socket_options,
-    queue_target: 5000
+    queue_target: 5000,
+    timeout: 60_000,
+    pool_timeout: 60_000
 
   config :nerves_hub,
     database_auto_migrator: System.get_env("DATABASE_AUTO_MIGRATOR", "true") == "true"
@@ -300,7 +304,6 @@ config :libcluster,
 ##
 # Firmware upload backend.
 #
-if config_env() == :prod do
   firmware_upload = System.get_env("FIRMWARE_UPLOAD_BACKEND", "local")
 
   case firmware_upload do
@@ -366,7 +369,6 @@ if config_env() == :prod do
       only \"local\" and \"S3\" available for selection
       """
   end
-end
 
 # Set a default max firmware upload size of 200MB for all environments
 config :nerves_hub, NervesHub.Firmwares.Upload,
